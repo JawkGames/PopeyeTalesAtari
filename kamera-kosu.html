@@ -56,10 +56,12 @@ import { PoseLandmarker, FilesetResolver } from
 
 // ---------------------------------------------------------------- Ayarlar
 const SERIT_X = [-2, 0, 2];
-const HIZ_BAS = 11, HIZ_MAX = 30, HIZ_ARTIS = 0.22;   // birim/sn
+const HIZ_BAS = 9, HIZ_MAX = 22;                      // birim/sn
+const ZORLUK_SURE = 600;                              // sn: en zor hâle 10 dakikada ulaşır
+const ARALIK_BAS = 3.2, ARALIK_SON = 1.7;             // engeller arası süre (sn)
 const ZIPLA_HIZ = 9.2, YERCEKIMI = 26;
 const DOGMA_Z = -95;
-const ZIPLA_ESIK = 0.10;   // gövde boyunun bu kadarı yükselince zıplama sayılır (küçük zıplama yeter)
+const ZIPLA_ESIK = 0.12;   // gövde boyunun bu kadarı yükselince zıplama sayılır (küçük zıplama yeter)
 const EGIL_ESIK = 0.30;    // gövde boyunun bu kadarı alçalınca eğilme sayılır
 const SERIT_ESIK = 0.45;   // omuz genişliğinin bu kadarı yana kayınca şerit değişir
 
@@ -69,7 +71,10 @@ const SES_YOL = {
   zipla:  "assets/ses/popeye/sekme1.mp3",
   carp:   "assets/ses/popeye/bastonVur.mp3",
   vur:    "assets/ses/popeye/ayakVur.mp3",
-  kaybet: "assets/ses/popeye/tamKaybet.mp3"
+  kaybet: "assets/ses/popeye/tamKaybet.mp3",
+  adim1:  "assets/ses/popeye/adim1.mp3",
+  adim2:  "assets/ses/popeye/adim2.mp3",
+  adim3:  "assets/ses/popeye/adim3.mp3"
 };
 const sesler = {};
 function sesleriYukle() {
@@ -265,24 +270,31 @@ const rast = n => Math.floor(Math.random() * n);
 
 function satirUret(z) {
   const tur = Math.random();
-  if (tur < 0.38) {                                   // iki şerit kapalı
+  // Her satırdan önce, oyuncuya doğru uzanan elmas dizisi (güvenli şeritte)
+  const dizi = (x, y, adet) => { for (let k = 1; k <= adet; k++) elmasEkle(x, y, z + 3 + k * 2.4); };
+  if (tur < 0.34) {                                   // iki şerit kapalı
     const bos = rast(3);
     for (let s = 0; s < 3; s++) if (s !== bos) blokEngel(SERIT_X[s], z);
-    for (let k = 1; k <= 4; k++) elmasEkle(SERIT_X[bos], 1.0, z + 4 + k * 2.4);
-  } else if (tur < 0.55) {                            // tek şerit kapalı
+    dizi(SERIT_X[bos], 1.0, 7);
+    elmasEkle(SERIT_X[bos], 1.0, z); elmasEkle(SERIT_X[bos], 1.0, z - 2.4);
+  } else if (tur < 0.52) {                            // tek şerit kapalı
     const dolu = rast(3);
     blokEngel(SERIT_X[dolu], z);
     const bos = (dolu + 1 + rast(2)) % 3;
-    for (let k = 0; k < 3; k++) elmasEkle(SERIT_X[bos], 1.0, z + k * 2.4);
-  } else if (tur < 0.78) {                            // boydan boya alçak: zıpla
+    dizi(SERIT_X[bos], 1.0, 7);
+    elmasEkle(SERIT_X[bos], 1.0, z); elmasEkle(SERIT_X[bos], 1.0, z - 2.4);
+  } else if (tur < 0.76) {                            // boydan boya alçak: zıpla
     alcakEngel(0, 6.4, z);
     const s = rast(3);
-    elmasEkle(SERIT_X[s], 2.0, z);
-    elmasEkle(SERIT_X[s], 1.6, z + 1.8);
-    elmasEkle(SERIT_X[s], 1.6, z - 1.8);
+    dizi(SERIT_X[s], 1.0, 5);
+    elmasEkle(SERIT_X[s], 1.5, z + 2.2);
+    elmasEkle(SERIT_X[s], 2.0, z + 0.8);
+    elmasEkle(SERIT_X[s], 2.0, z - 0.8);
+    elmasEkle(SERIT_X[s], 1.5, z - 2.2);
   } else {                                            // boydan boya yüksek: eğil
     yuksekEngel(0, 6.4, z);
     const s = rast(3);
+    dizi(SERIT_X[s], 0.9, 5);
     for (let k = -1; k <= 1; k++) elmasEkle(SERIT_X[s], 0.55, z + k * 2);
   }
 }
@@ -302,7 +314,7 @@ const girdi = { serit: 1, egil: false, zipla: false, elHavada: false };
 function sifirla() {
   for (const n of nesneler) sahne.remove(n.ag);
   nesneler = [];
-  hiz = HIZ_BAS; mesafe = 0; sonrakiSatir = 20; elmasSayi = 0; sure = 0;
+  hiz = HIZ_BAS; mesafe = 0; sonrakiSatir = 30; elmasSayi = 0; sure = 0;
   serit = 1; girdi.serit = 1; girdi.zipla = false;
   py = 0; vy = 0; havada = false; egik = false;
   oyuncu.position.set(0, 0, 0); oyuncu.rotation.set(0, 0, 0);
@@ -349,6 +361,7 @@ let algilayici = null, kameraVar = false, sonVideoZaman = -1;
 const olcum = { sayac: 0, x: 0, y: 0, gen: 0, govde: 0 };
 const temel = { x: 0.5, y: 0.4, gen: 0.2, govde: 0.25 };
 let yumY = null, yumX = null;
+let ziplaHazir = true, ziplaBekle = 0, oncekiFark = 0;
 
 async function kamerayiAc() {
   const akis = await navigator.mediaDevices.getUserMedia({
@@ -395,6 +408,7 @@ function pozOku() {
       temel.x = olcum.x / 20; temel.y = olcum.y / 20;
       temel.gen = Math.max(olcum.gen / 20, 0.05); temel.govde = Math.max(olcum.govde / 20, 0.08);
       yumY = temel.y; yumX = temel.x;
+      ziplaHazir = true; ziplaBekle = 0; oncekiFark = 0;
       girdi.serit = serit; girdi.zipla = false; girdi.egil = false;
       oyunuBaslat(olcumDevam);
     }
@@ -411,8 +425,18 @@ function pozOku() {
 
   // Zıplama / eğilme: omuz yüksekliğinin ölçülen hâle göre değişimi
   const fark = (temel.y - yumY) / temel.govde;      // + yukarı, - aşağı
-  if (fark > ZIPLA_ESIK) girdi.zipla = true;
-  girdi.egil = fark < -EGIL_ESIK;
+  const simdi = performance.now();
+  // Tek zıplama = tek tetikleme: omuzlar normale dönene ve kısa bir süre geçene kadar yenisi sayılmaz
+  if (ziplaHazir && fark > ZIPLA_ESIK && simdi > ziplaBekle) {
+    girdi.zipla = true; ziplaHazir = false; ziplaBekle = simdi + 900;
+  } else if (!ziplaHazir && fark < ZIPLA_ESIK * 0.4) {
+    ziplaHazir = true;
+  }
+  girdi.egil = fark < -EGIL_ESIK && simdi > ziplaBekle - 400;   // iniş esnemesi eğilme sayılmasın
+  // Duruş yavaşça kaydıysa (biraz öne/arkaya geçtiysen) ölçümü sessizce güncelle
+  if (Math.abs(fark - oncekiFark) < 0.015 && fark > -0.2 && fark < 0.3)
+    temel.y += (yumY - temel.y) * 0.06;
+  oncekiFark = fark;
 }
 
 // ---------------------------------------------------------------- Klavye ve kaydırma (yedek kontrol)
@@ -505,15 +529,16 @@ const saat = new THREE.Clock();
 function guncelle(dt) {
   if (durum === "oyun") {
     sure += dt;
-    hiz = Math.min(HIZ_MAX, HIZ_BAS + sure * HIZ_ARTIS);
+    const zorluk = Math.min(1, sure / ZORLUK_SURE);      // 0 → 1, 10 dakikada
+    hiz = HIZ_BAS + (HIZ_MAX - HIZ_BAS) * zorluk;
     const yol = hiz * dt;
     mesafe += yol;
 
     // Yeni satır
     if (mesafe >= sonrakiSatir) {
       satirUret(DOGMA_Z);
-      const aralikSn = Math.max(1.15, 1.75 - sure * 0.008);
-      sonrakiSatir = mesafe + Math.max(16, hiz * aralikSn);
+      const aralikSn = ARALIK_BAS + (ARALIK_SON - ARALIK_BAS) * zorluk;
+      sonrakiSatir = mesafe + hiz * aralikSn;
     }
 
     // Oyuncu hareketi
@@ -532,7 +557,9 @@ function guncelle(dt) {
     const boy = 1.9 * beden.scale.y;
 
     // Koşu animasyonu
+    const oncekiAdim = Math.floor(kosuFaz / Math.PI);
     kosuFaz += dt * (6 + hiz * 0.5);
+    if (!havada && Math.floor(kosuFaz / Math.PI) !== oncekiAdim) cal("adim" + (1 + rast(3)), 0.18);
     const sal = havada ? 0.9 : Math.sin(kosuFaz) * 0.9;
     solBacak.rotation.x = sal; sagBacak.rotation.x = havada ? -0.5 : -sal;
     solKol.rotation.x = -sal; sagKol.rotation.x = havada ? -2.4 : sal;
