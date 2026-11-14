@@ -23,6 +23,15 @@
   #panel .buyuk { font-size: 34px; font-weight: 900; color: #ff8a00; }
   #panel button { margin-top: 12px; padding: 14px 34px; font-size: 20px; font-weight: 800;
     color: #fff; background: #ff4f9a; border: 0; border-radius: 14px; box-shadow: 0 5px 0 #c92f73; }
+  #kilit { position: fixed; inset: 0; z-index: 20; display: none; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center;
+    background: rgba(74,42,107,.93); color: #fff; font-size: 22px; font-weight: 800; }
+  #kilit .ikon { font-size: 64px; }
+  #kilit button { padding: 14px 34px; font-size: 20px; font-weight: 800; color: #fff;
+    background: #ff4f9a; border: 0; border-radius: 14px; box-shadow: 0 5px 0 #c92f73; }
+  #tamEkran { position: fixed; left: 10px; bottom: 10px; z-index: 10; width: 46px; height: 46px;
+    font-size: 24px; color: #fff; background: rgba(0,0,0,.35); border: 2px solid #fff;
+    border-radius: 12px; display: none; }
 </style>
 </head>
 <body>
@@ -30,9 +39,12 @@
 <video id="video" playsinline muted></video>
 <div id="ust"><span id="skor">0</span><span id="elmas">💎 0</span></div>
 <div id="durum"></div>
+<button id="tamEkran">⛶</button>
+<div id="kilit"><div class="ikon" id="kilitIkon"></div><div id="kilitYazi"></div>
+  <button id="kilitDugme">Tam ekran yap</button></div>
 <div id="panel">
   <h1>Kamera Koşusu</h1>
-  <p>Telefonu sabitle, 1,5-2 m geri çekil.</p>
+  <p>Telefonu yan çevirip sabitle, 1,5-2 m geri çekil.</p>
   <p>Sağa / sola adım at, zıpla, eğil.<br>Elmasları topla, engellerden kaç.</p>
   <button id="basla">Başla</button>
 </div>
@@ -297,16 +309,18 @@ function sifirla() {
   beden.scale.set(1, 1, 1);
   elSkor.textContent = "0"; elElmas.textContent = "💎 0";
 }
-function oyunuBaslat() {
-  sifirla();
+function oyunuBaslat(devam) {
+  if (!devam) sifirla();
   panel.style.display = "none";
   elDurum.textContent = "";
   durum = "oyun";
 }
-function olcumeGec() {
-  sifirla();
+let olcumDevam = false;     // true: ölçüm bitince oyun kaldığı yerden sürer
+function olcumeGec(devam) {
+  olcumDevam = devam === true;
+  if (!olcumDevam) sifirla();
   panel.style.display = "none";
-  if (!kameraVar) { oyunuBaslat(); return; }
+  if (!kameraVar) { oyunuBaslat(olcumDevam); return; }
   olcum.sayac = 0; olcum.x = 0; olcum.y = 0; olcum.gen = 0; olcum.govde = 0;
   durum = "olcum";
   elDurum.textContent = "Ortada dik dur, ölçüyorum...";
@@ -325,7 +339,7 @@ function oyunBitti() {
     "<p>" + (kameraVar ? "🙌 Ellerini havaya kaldır, yeniden başlasın" : "") + "</p>" +
     "<button id='tekrar'>Tekrar</button>";
   panel.style.display = "block";
-  document.getElementById("tekrar").addEventListener("click", olcumeGec);
+  document.getElementById("tekrar").addEventListener("click", () => olcumeGec());
   elDurum.textContent = "";
 }
 
@@ -381,7 +395,8 @@ function pozOku() {
       temel.x = olcum.x / 20; temel.y = olcum.y / 20;
       temel.gen = Math.max(olcum.gen / 20, 0.05); temel.govde = Math.max(olcum.govde / 20, 0.08);
       yumY = temel.y; yumX = temel.x;
-      oyunuBaslat();
+      girdi.serit = serit; girdi.zipla = false; girdi.egil = false;
+      oyunuBaslat(olcumDevam);
     }
     return;
   }
@@ -420,18 +435,69 @@ tuval.addEventListener("pointerup", e => {
   else { girdi.egil = true; setTimeout(() => { girdi.egil = false; }, 700); }
 });
 
+// ---------------------------------------------------------------- Tam ekran + yatay zorunluluğu
+const kok = document.documentElement;
+const tamEkranDestek = !!(kok.requestFullscreen || kok.webkitRequestFullscreen);
+const tamEkranMi = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+const elKilit = document.getElementById("kilit"), elKilitYazi = document.getElementById("kilitYazi");
+const elKilitIkon = document.getElementById("kilitIkon"), elKilitDugme = document.getElementById("kilitDugme");
+const elTamEkran = document.getElementById("tamEkran");
+let basladi = false, engel = false;
+
+async function tamEkranAc() {
+  try {
+    if (kok.requestFullscreen) await kok.requestFullscreen({ navigationUI: "hide" });
+    else if (kok.webkitRequestFullscreen) kok.webkitRequestFullscreen();
+  } catch (e) {}
+  try { await screen.orientation.lock("landscape"); } catch (e) {}   // destekleyen telefonda yatay kilitler
+  engelKontrol();
+}
+function tamEkranKapat() {
+  try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) {}
+}
+function engelKontrol() {
+  if (!basladi) return;
+  const tamYok = tamEkranDestek && !tamEkranMi();
+  const dikey = innerWidth < innerHeight;
+  const yeni = tamYok || dikey;
+  if (tamYok) {
+    elKilitIkon.textContent = "⛶"; elKilitYazi.textContent = "Oyun tam ekranda oynanır";
+    elKilitDugme.style.display = "";
+  } else if (dikey) {
+    elKilitIkon.textContent = "📱↻"; elKilitYazi.textContent = "Telefonu yan çevir";
+    elKilitDugme.style.display = "none";
+  }
+  elKilit.style.display = yeni ? "flex" : "none";
+  // Engel kalktı: kamera açısı değiştiği için yeniden ölç, oyun kaldığı yerden sürsün
+  if (engel && !yeni && (durum === "oyun" || durum === "olcum")) olcumeGec(durum === "oyun" || olcumDevam);
+  engel = yeni;
+}
+elKilitDugme.addEventListener("click", tamEkranAc);
+elTamEkran.addEventListener("click", () => { tamEkranMi() ? tamEkranKapat() : tamEkranAc(); });
+for (const olay of ["resize", "orientationchange", "fullscreenchange", "webkitfullscreenchange"])
+  addEventListener(olay, () => setTimeout(engelKontrol, 150));
+document.addEventListener("fullscreenchange", () => setTimeout(engelKontrol, 150));
+document.addEventListener("webkitfullscreenchange", () => setTimeout(engelKontrol, 150));
+
 // ---------------------------------------------------------------- Başlat düğmesi
 document.getElementById("basla").addEventListener("click", async () => {
+  tamEkranAc();                       // dokunma anında çağrılmalı
+  basladi = true; engel = true;       // yatay + tam ekran olana kadar ölçüm başlamaz
+  if (tamEkranDestek) elTamEkran.style.display = "block";
   sesleriYukle();
   panel.innerHTML = "<h1>Hazırlanıyor</h1><p>Kamera ve model yükleniyor...</p>";
   try { await kamerayiAc(); }
   catch (hata) {
+    engelKontrol();
     panel.innerHTML = "<h1>Kamera açılamadı</h1><p>" + hata.message +
       "</p><p>Kaydırarak / ok tuşlarıyla oynayabilirsin.</p><button id='devam'>Devam</button>";
-    document.getElementById("devam").addEventListener("click", olcumeGec);
+    document.getElementById("devam").addEventListener("click", () => olcumeGec());
     return;
   }
-  olcumeGec();
+  durum = "olcum"; olcumDevam = false;
+  panel.style.display = "none";
+  engel = true; engelKontrol();       // yataysa ölçüm hemen başlar, değilse yan çevrilince
+  if (!engel) olcumeGec();
 });
 
 // ---------------------------------------------------------------- Ana döngü
@@ -519,8 +585,7 @@ function guncelle(dt) {
 function dongu() {
   requestAnimationFrame(dongu);
   const dt = Math.min(saat.getDelta(), 0.05);
-  pozOku();
-  guncelle(dt);
+  if (!engel) { pozOku(); guncelle(dt); }
   cizer.render(sahne, kamera);
 }
 sifirla();
