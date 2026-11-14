@@ -59,7 +59,9 @@ const SERIT_X = [-2, 0, 2];
 const HIZ_BAS = 9, HIZ_MAX = 22;                      // birim/sn
 const ZORLUK_SURE = 600;                              // sn: en zor hâle 10 dakikada ulaşır
 const ARALIK_BAS = 3.2, ARALIK_SON = 1.7;             // engeller arası süre (sn)
-const ZIPLA_HIZ = 9.2, YERCEKIMI = 26;
+const ZIPLA_HIZ = 12, YERCEKIMI = 26;                 // tepe ~2,8 birim
+const ZIPLA_YARDIM_SN = 1.0;                          // zıplayınca bu kadar sn ilerideki alçak engel geçilmiş sayılır
+const CARPMA_GECIKME_SN = 0.22;                       // alçak engelde çarpma bu kadar geç sayılır (geç zıplamayı kurtarır)
 const DOGMA_Z = -95;
 const ZIPLA_ESIK = 0.12;   // gövde boyunun bu kadarı yükselince zıplama sayılır (küçük zıplama yeter)
 const EGIL_ESIK = 0.30;    // gövde boyunun bu kadarı alçalınca eğilme sayılır
@@ -361,7 +363,7 @@ let algilayici = null, kameraVar = false, sonVideoZaman = -1;
 const olcum = { sayac: 0, x: 0, y: 0, gen: 0, govde: 0 };
 const temel = { x: 0.5, y: 0.4, gen: 0.2, govde: 0.25 };
 let yumY = null, yumX = null;
-let ziplaHazir = true, ziplaBekle = 0, oncekiFark = 0;
+let ziplaHazir = true, ziplaBekle = 0, oncekiFark = 0, kolHazir = true;
 
 async function kamerayiAc() {
   const akis = await navigator.mediaDevices.getUserMedia({
@@ -408,7 +410,7 @@ function pozOku() {
       temel.x = olcum.x / 20; temel.y = olcum.y / 20;
       temel.gen = Math.max(olcum.gen / 20, 0.05); temel.govde = Math.max(olcum.govde / 20, 0.08);
       yumY = temel.y; yumX = temel.x;
-      ziplaHazir = true; ziplaBekle = 0; oncekiFark = 0;
+      ziplaHazir = true; kolHazir = true; ziplaBekle = 0; oncekiFark = 0;
       girdi.serit = serit; girdi.zipla = false; girdi.egil = false;
       oyunuBaslat(olcumDevam);
     }
@@ -432,6 +434,12 @@ function pozOku() {
   } else if (!ziplaHazir && fark < ZIPLA_ESIK * 0.4) {
     ziplaHazir = true;
   }
+  // Kolları iki yana açmak da zıplama sayılır
+  const solAcik = Math.abs(n[15].x - n[11].x) > temel.gen * 0.85 && Math.abs(n[15].y - n[11].y) < temel.govde * 0.6;
+  const sagAcik = Math.abs(n[16].x - n[12].x) > temel.gen * 0.85 && Math.abs(n[16].y - n[12].y) < temel.govde * 0.6;
+  if (solAcik && sagAcik) {
+    if (kolHazir && simdi > ziplaBekle) { girdi.zipla = true; kolHazir = false; ziplaBekle = simdi + 900; }
+  } else if (!solAcik && !sagAcik) kolHazir = true;
   girdi.egil = fark < -EGIL_ESIK && simdi > ziplaBekle - 400;   // iniş esnemesi eğilme sayılmasın
   // Duruş yavaşça kaydıysa (biraz öne/arkaya geçtiysen) ölçümü sessizce güncelle
   if (Math.abs(fark - oncekiFark) < 0.015 && fark > -0.2 && fark < 0.3)
@@ -544,7 +552,12 @@ function guncelle(dt) {
     // Oyuncu hareketi
     serit = girdi.serit;
     oyuncu.position.x += (SERIT_X[serit] - oyuncu.position.x) * Math.min(1, dt * 14);
-    if (girdi.zipla && !havada) { vy = ZIPLA_HIZ; havada = true; cal("zipla"); }
+    if (girdi.zipla) {
+      // Zıplama yardımı: yakındaki (ve tam çarpma anındaki) alçak engel geçilmiş sayılır
+      for (const n of nesneler)
+        if (n.tip === "alcak" && n.z > -hiz * ZIPLA_YARDIM_SN && n.z < 0.6 + hiz * CARPMA_GECIKME_SN) n.gecildi = true;
+      if (!havada) { vy = ZIPLA_HIZ; havada = true; cal("zipla"); }
+    }
     girdi.zipla = false;
     if (havada) {
       vy -= YERCEKIMI * dt; py += vy * dt;
@@ -578,8 +591,12 @@ function guncelle(dt) {
           elmasSayi++; cal("elmas", 0.7);
           continue;
         }
+      } else if (n.tip === "alcak") {
+        // Üstündeyken havadaysa geçildi; değilse çarpma biraz geç sayılır ki geç zıplama kurtarsın
+        if (Math.abs(n.z) < 0.6 && py >= 0.6) n.gecildi = true;
+        if (!n.gecildi && n.z >= 0.6 + hiz * CARPMA_GECIKME_SN && n.z < 0.6 + hiz * CARPMA_GECIKME_SN + yol + 0.01) { oyunBitti(); return; }
       } else if (Math.abs(n.z) < 0.6 && Math.abs(n.x - ox) < n.yari + 0.3) {
-        const carpti = n.tip === "blok" || (n.tip === "alcak" && py < 0.6) || (n.tip === "yuksek" && py + boy > 1.4);
+        const carpti = n.tip === "blok" || (n.tip === "yuksek" && py + boy > 1.4);
         if (carpti) { oyunBitti(); return; }
       }
       if (n.z > 12) { sahne.remove(n.ag); nesneler.splice(i, 1); }
