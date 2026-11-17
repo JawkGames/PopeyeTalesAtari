@@ -2,7 +2,7 @@
 //   node scripts/hazirla.js www      -> www/ üretir: index.html + js + assets (assets/kaynak hariç) + lib (Phaser, Capacitor, AdMob);
 //                                       index.html'deki CDN Phaser satırı yerel dosyalarla değişir
 //   node scripts/hazirla.js config   -> capacitor.config.json
-//   node scripts/hazirla.js android  -> Android projesine AdMob kimliği, yatay tam ekran, sürüm numarası, yayın imzası
+//   node scripts/hazirla.js android  -> Android projesine AdMob kimliği, yatay gerçek tam ekran (immersive MainActivity), sürüm numarası, yayın imzası
 // Ayarlar js/ayarlar.js → CONFIG.mobil (paket adı, oyun adı, reklam kimlikleri).
 const fs = require('fs');
 const path = require('path');
@@ -35,7 +35,9 @@ if (adim === 'www') {
 
 if (adim === 'config') {
   fs.writeFileSync(path.join(kok, 'capacitor.config.json'), JSON.stringify({
-    appId: M.paketAdi, appName: M.oyunAdi, webDir: 'www', android: { backgroundColor: '#111111' }
+    appId: M.paketAdi, appName: M.oyunAdi, webDir: 'www', android: { backgroundColor: '#111111' },
+    // Capacitor 8 SystemBars: açılışta çubukları gizli tut; ekran kenarına iç boşluk (padding) koymasın → oyun bütün ekranı kaplar
+    plugins: { SystemBars: { hidden: true, insetsHandling: 'disable' } }
   }, null, 2));
   console.log('capacitor.config.json yazıldı:', M.paketAdi);
 }
@@ -66,6 +68,67 @@ if (adim === 'android') {
     st = st.replace(/(<style name="AppTheme\.NoActionBarLaunch"[^>]*>)/, '$1\n        <item name="windowSplashScreenBackground">#111111</item>');
   }
   fs.writeFileSync(stil, st);
+
+  // Gerçek tam ekran (immersive): MainActivity, durum çubuğu + gezinme çubuğunu gizler; kenardan kaydırınca geçici görünürler.
+  // Her açılışta / geri dönüşte / odak geri gelince yeniden gizler. Dosya her seferinde baştan yazılır (tekrar çalışınca bozulmaz).
+  const javaKok = path.join(app, 'src/main/java');
+  const javaBul = (d) => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? javaBul(path.join(d, e.name)) : (e.name === 'MainActivity.java' ? [path.join(d, e.name)] : [])) : [];
+  const beklenen = path.join(javaKok, ...M.paketAdi.split('.'), 'MainActivity.java');
+  const bulunan = javaBul(javaKok);
+  const anaAkt = bulunan.includes(beklenen) ? beklenen : bulunan[0];
+  if (!anaAkt) throw new Error('MainActivity.java bulunamadı: ' + javaKok + ' (önce "npx cap add android" çalışmalı)');
+  const paket = (fs.readFileSync(anaAkt, 'utf8').match(/^\s*package\s+([\w.]+)\s*;/m) || [])[1] || M.paketAdi;
+  fs.writeFileSync(anaAkt, `package ${paket};
+
+import android.os.Build;
+import android.os.Bundle;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
+import com.getcapacitor.BridgeActivity;
+
+// scripts/hazirla.js tarafından yazılır (elle değiştirme): gerçek tam ekran / immersive
+public class MainActivity extends BridgeActivity {
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        tamEkran();
+        // eklentiler yüklenirken çubuklar yeniden açılırsa diye bir kez daha
+        getWindow().getDecorView().postDelayed(this::tamEkran, 300);
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        tamEkran();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) tamEkran();
+    }
+
+    private void tamEkran() {
+        Window w = getWindow();
+        WindowCompat.setDecorFitsSystemWindows(w, false);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            WindowManager.LayoutParams lp = w.getAttributes();
+            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            w.setAttributes(lp);
+        }
+        View decor = w.getDecorView();
+        WindowInsetsControllerCompat c = WindowCompat.getInsetsController(w, decor);
+        c.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        c.hide(WindowInsetsCompat.Type.systemBars());
+    }
+}
+`);
+  if (anaAkt !== beklenen) console.warn('Uyarı: MainActivity beklenen yerde değil, bulunan kullanıldı:', anaAkt);
 
   // Sürüm: Play'deki eski (Unity) sürümlerin üstünde kalsın diye taban + derleme numarası
   const gradle = path.join(app, 'build.gradle');
