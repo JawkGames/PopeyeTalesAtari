@@ -30,6 +30,7 @@ Object.assign(OyunSahnesi.prototype, {
     const koy = (ad, x, y, boy, tavan) => {
       const O = ASSETLER.nesne3[ad];
       const img = this.add.image(x, y, ad).setDepth(1.3);
+      (this.susListe = this.susListe || []).push(img);   // v1.82: kadraj dışındakiler çizilmez (susKirp)
       if (ad === 'susCelenk') { img.setOrigin(0.5, 0).setDisplaySize(boy, boy * O.h / O.w); }
       else if (tavan) { img.setOrigin(0.5, 0).setDisplaySize(boy * O.w / O.h, boy); }
       else { img.setOrigin(O.ox, 1).setDisplaySize(boy * O.w / O.h, boy); if (rnd() < 0.5) img.setFlipX(true); }

@@ -58,6 +58,8 @@ if (adim === 'android') {
   }
   if (!m.includes('permission.AD_ID')) m = m.replace('<application', '<uses-permission android:name="com.google.android.gms.permission.AD_ID" />\n    <application');
   if (!m.includes('screenOrientation')) m = m.replace('<activity', '<activity\n            android:screenOrientation="sensorLandscape"');   // yatay oyun
+  // v1.82: donanım özellikleri zorunlu olmasın (Play Console "required hardware feature" uyarısı çıkmasın)
+  if (!m.includes('android.hardware.screen.landscape')) m = m.replace('<application', '<uses-feature android:name="android.hardware.screen.landscape" android:required="false" />\n    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />\n    <application');
   fs.writeFileSync(man, m);
 
   // Tam ekran (durum çubuğu yok, çentik alanı kullanılır)
@@ -67,6 +69,8 @@ if (adim === 'android') {
     st = st.replace(/(<style name="AppTheme\.NoActionBar"[^>]*>)/, '$1\n        <item name="android:windowFullscreen">true</item>\n        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>');
     st = st.replace(/(<style name="AppTheme\.NoActionBarLaunch"[^>]*>)/, '$1\n        <item name="windowSplashScreenBackground">#111111</item>');
   }
+  // v1.82: Capacitor 8 decor arka planını temanın windowBackground'una boyar; açık temada beyaz → WebView'in çizmediği kenarlar beyaz görünür
+  if (!st.includes('android:windowBackground')) st = st.replace(/(<style name="AppTheme\.NoActionBar"[^>]*>)/, '$1\n        <item name="android:windowBackground">@android:color/black</item>');
   fs.writeFileSync(stil, st);
 
   // Gerçek tam ekran (immersive): MainActivity, durum çubuğu + gezinme çubuğunu gizler; kenardan kaydırınca geçici görünürler.
@@ -80,11 +84,14 @@ if (adim === 'android') {
   const paket = (fs.readFileSync(anaAkt, 'utf8').match(/^\s*package\s+([\w.]+)\s*;/m) || [])[1] || M.paketAdi;
   fs.writeFileSync(anaAkt, `package ${paket};
 
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -96,6 +103,17 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // v1.82: WebView kenara kadar çizsin — çubuk / çentik boşluklarını sıfırla (CONSUMED değil: WebView'in güvenli alan hesabı bozulmasın)
+        View wv = getBridge().getWebView();
+        wv.setBackgroundColor(Color.BLACK);
+        View ana = (View) wv.getParent();
+        ViewCompat.setOnApplyWindowInsetsListener(ana, (v, insets) -> {
+            v.setPadding(0, 0, 0, 0);
+            return new WindowInsetsCompat.Builder(insets)
+                .setInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout(), Insets.NONE)
+                .build();
+        });
+        ana.setPadding(0, 0, 0, 0);
         tamEkran();
         // eklentiler yüklenirken çubuklar yeniden açılırsa diye bir kez daha
         getWindow().getDecorView().postDelayed(this::tamEkran, 300);
@@ -118,10 +136,13 @@ public class MainActivity extends BridgeActivity {
         WindowCompat.setDecorFitsSystemWindows(w, false);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             WindowManager.LayoutParams lp = w.getAttributes();
-            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            lp.layoutInDisplayCutoutMode = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                ? WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                : WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
             w.setAttributes(lp);
         }
         View decor = w.getDecorView();
+        decor.setBackgroundColor(Color.BLACK);
         WindowInsetsControllerCompat c = WindowCompat.getInsetsController(w, decor);
         c.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
         c.hide(WindowInsetsCompat.Type.systemBars());

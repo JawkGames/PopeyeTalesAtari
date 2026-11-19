@@ -5,6 +5,7 @@ class OyunSahnesi extends Phaser.Scene {
   constructor() { super('Game'); }
 
   create() {
+    this.susListe = []; this.kirpSayac = 0;   // v1.82: sahne yeniden başlayınca eski süs listesi kalmasın
     this.bolumNo = this.registry.get('bolum') || 0;   // BOLUMLER sırası (main.js)
     const L = BOLUMLER[this.bolumNo];
     // v1.55: yüzme bölümü ayrı sahnede (YuzmeSahnesi) — bu sahne kurulmadan oraya geçilir
@@ -78,7 +79,13 @@ class OyunSahnesi extends Phaser.Scene {
         cam.startFollow(this.player, true, 0.12, 0.12).setDeadzone(0, 30);
         return;
       }
-      cam.stopFollow(); cam.removeBounds();   // v1.08: dükkanda / arenada kamera sabit, odanın tamamını gösterir
+      if (O.tip === 'arena') {   // v1.82: arena %20 yakın, oyuncuyu odanın içinde izler
+        cam.setZoom(Math.min(h / O.h, w / O.w) * 1.2);
+        cam.setBounds(O.x, O.y, O.w, O.h);
+        cam.startFollow(this.player, true, 0.12, 0.12);
+        return;
+      }
+      cam.stopFollow(); cam.removeBounds();   // v1.08: dükkanda kamera sabit, odanın tamamını gösterir
       cam.setZoom(Math.min(h / O.h, w / O.w));
       cam.centerOn(O.x + O.w / 2, O.y + O.h / 2);
       return;
@@ -382,6 +389,14 @@ class OyunSahnesi extends Phaser.Scene {
     this.gizlilerGuncelle();
     this.sahteGuncelle();
     this.selaleGuncelle(dt);
+    this.susKirp();
+  }
+
+  // v1.82: kadrajın 300 px dışındaki süsler çizilmez (8 karede bir denetlenir)
+  susKirp() {
+    if (!this.susListe || (this.kirpSayac = (this.kirpSayac || 0) + 1) % 8) return;
+    const v = this.cameras.main.worldView, P = 300, x0 = v.x - P, x1 = v.right + P, y0 = v.y - P, y1 = v.bottom + P;
+    for (const s of this.susListe) s.setVisible(s.x > x0 && s.x < x1 && s.y > y0 && s.y < y1);
   }
 
   // Şelale akışı + sesi. Ses kadraja yaklaşırken (SELALE_DUYMA px) şelalenin olduğu taraftaki hoparlörden kısık başlar,

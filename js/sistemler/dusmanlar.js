@@ -134,7 +134,11 @@ Object.assign(OyunSahnesi.prototype, {
     this.dusmanlar.getChildren().forEach(d => { if (d.ipSpr) d.ipSpr.setVisible(false); });
     this.dusmanlar.getChildren().forEach(d => {
       if (!d.active || d.oldu) return;
-      if (d.tip !== 'boss' && (Math.abs(d.x - p.x) > 900 || Math.abs(d.y - p.y) > 700)) return;   // uzaktakiler uyur
+      if (d.tip !== 'boss' && (Math.abs(d.x - p.x) > 900 || Math.abs(d.y - p.y) > 700)) {   // uzaktakiler uyur
+        if (!d.uyuyor && d.body.enable && d.body.blocked.down) { d.uyuyor = true; d.body.setVelocity(0, 0); d.body.enable = false; }   // v1.82: fizik de durur
+        return;
+      }
+      if (d.uyuyor) { d.uyuyor = false; d.body.enable = true; }
       const b = d.body;
       if (d.alanVar && (d.x < d.minX || d.x > d.maxX)) { d.x = Phaser.Math.Clamp(d.x, d.minX, d.maxX); b.setVelocityX(0); }
       if (d.sersem > 0) {   // vuruş sonrası kısa sersemlik

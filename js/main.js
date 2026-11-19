@@ -1,5 +1,7 @@
 // Oyunu başlatır. Ekran açıldığı pencereye / ekrana tam oturur (sabit en-boy oranı yok);
 // tuval cihaz piksel oranında çizilir (retina / telefon ekranlarında bulanıklık olmaz).
+// v1.82: telefondaki uygulamada grafik bir kez "orta"ya alınır (DPR 2 → 1.5: ~%44 daha az piksel, kasma azalır); oyuncu sonra ayarlardan değiştirebilir
+if (Reklam.native && !ayarAl().grGecis) { const A = ayarAl(); A.gr = Math.min(A.gr, 1); A.grGecis = 1; kayitYaz(); }
 const DPR = Math.min(window.devicePixelRatio || 1, GR_DPR[ayarAl().gr]);   // v1.61: grafik ayarı çözünürlüğü sınırlar
 const ekranW = () => Math.max(1, Math.round(window.innerWidth * DPR));
 const ekranH = () => Math.max(1, Math.round(window.innerHeight * DPR));
@@ -22,6 +24,7 @@ const oyun = new Phaser.Game({
   physics: { default: 'arcade', arcade: { gravity: { y: CONFIG.fizik.yercekimi }, debug: false } },
   scale: { mode: Phaser.Scale.NONE, zoom: 1 / DPR },
   input: { activePointers: 4 },
+  render: { powerPreference: 'high-performance' },   // v1.82
   scene: [OnSahnesi, BootSahnesi, GirisSahnesi, OyunSahnesi, ArayuzSahnesi, YuzmeSahnesi, AyarSahnesi]
 });
 
@@ -37,5 +40,8 @@ const yenidenBoyutla = () => {
 window.addEventListener('resize', yenidenBoyutla);
 window.addEventListener('orientationchange', yenidenBoyutla);
 document.addEventListener('fullscreenchange', yenidenBoyutla);
+// v1.82: uygulamada ilk ölçü çubuklar gizlenmeden alınmış olabilir — kısa süre sonra yeniden ölç
+if (window.visualViewport) window.visualViewport.addEventListener('resize', yenidenBoyutla);
+if (Reklam.native) { setTimeout(yenidenBoyutla, 300); setTimeout(yenidenBoyutla, 1000); }
 
 Reklam.baslat();   // v1.77: uygulamada AdMob (web'de boş)
