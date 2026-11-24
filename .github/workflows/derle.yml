@@ -17,7 +17,7 @@ jobs:
   android:
     runs-on: ubuntu-latest
     env:
-      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -53,9 +53,9 @@ jobs:
         if: env.KEYSTORE_BASE64 != ''
         working-directory: android
         env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
+          KEY_ALIAS: upload
+          KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
         run: ./gradlew bundleRelease --no-daemon
 
       - name: Dosyaları hazırla
